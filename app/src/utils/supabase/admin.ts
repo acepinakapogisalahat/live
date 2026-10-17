@@ -110,20 +110,35 @@ export async function softRemoveListing(id: string, reason = '') {
     `“${l?.name ?? 'A listing'}” was hidden from search by a moderator.${reason ? ` Reason: ${reason}` : ''} It is not deleted — contact the platform to restore it.`, id);
 }
 
-// Hard delete = admin power; clears dependents first so FK never blocks.
-// NOTE: no rating recalc here — the listing row is gone, so there is nothing to recalc.
+// Hard delete = admin power; clears EVERY dependent first so no FK can block the parent delete.
+// Children of listings (verified via pg_constraint): photos, trip_items, reviews, recommendations, bookings.
+// attractions/hotels/restaurants subtypes join on their own id (= listing_id) and CASCADE automatically,
+// so they need no explicit delete here. If query B ever reveals another NON-cascade child, add its step.
 export async function hardDeleteListing(id: string) {
   const sup = db(); await assertSuper(sup);
   const { data: l } = await sup.from('listings').select('uploaded_by, name').eq('listing_id', id).maybeSingle();
-  await sup.from('photos').delete().eq('listing_id', id);
-  await sup.from('trip_items').delete().eq('listing_id', id);
+
+  // Count reviews BEFORE wiping them (audit trail + notify copy).
   const { count: revCount } = await sup.from('reviews').select('review_id', { count: 'exact', head: true }).eq('listing_id', id);
-  await sup.from('reviews').delete().eq('listing_id', id);
+
+  // Each child delete is checked, so a future missing dependent fails with an actionable
+  // message naming the table instead of the cryptic generic FK banner.
+  const step = async (table: string, q: Promise<any>) => {
+    const { error } = await q;
+    if (error) throw new Error(`Could not clear ${table} for listing ${id}: ${error.message}`);
+  };
+  await step('photos',          sup.from('photos').delete().eq('listing_id', id));
+  await step('trip_items',      sup.from('trip_items').delete().eq('listing_id', id));
+  await step('reviews',         sup.from('reviews').delete().eq('listing_id', id));
+  await step('recommendations', sup.from('recommendations').delete().eq('listing_id', id));
+  await step('bookings',        sup.from('bookings').delete().eq('listing_id', id));
+
   const { error } = await sup.from('listings').delete().eq('listing_id', id);
   if (error) throw error;
+
   await audit(sup, 'listing.delete_hard', 'listings', id, { reviews_removed: revCount ?? 0 });
   await notify(sup, l?.uploaded_by, 'listing_removed', 'One of your listings was permanently removed',
-    `“${l?.name ?? 'A listing'}” and all its photos, reviews and trip-items were deleted by a moderator. This action cannot be undone.`, null);
+    `“${l?.name ?? 'A listing'}” and all its photos, reviews, recommendations, bookings and trip-items were deleted by a moderator. This action cannot be undone.`, null);
 }
 
 /* ─────────────── Reviews / moderation ─────────────── */
