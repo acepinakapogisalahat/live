@@ -3,6 +3,7 @@
 import { Fragment, useEffect, useRef, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { createClient } from '@/utils/supabase/client';
+import { notifyListingOwner } from '@/utils/supabase/tripSignals';
 import {
   INSET, GLASS, GLASS_SM, GRAD, GLOSS, PILL_ACTIVE, INPUT,
   Star, ChevronDown, PlusIcon, MapIcon, CloseIcon, EditIcon, TrashIcon, SparkleIcon, RouteIcon,
@@ -181,6 +182,7 @@ export default function PlanTab({ userId, trips, refreshTrips, explore, schedMap
       if (trip.stops.length === 0) { const listing = addList.find((l) => l.listing_id === listingId) ?? explore.find((l) => l.listing_id === listingId); if (listing) { const stopLabel = extractStopLabel(listing.destination?.region_country ?? null); if (stopLabel) await saveStops([{ label: stopLabel, days: tripDays ?? 1 }]); } }
       const { error } = await supabase.from('trip_items').insert({ trip_item_id: `ITI-${Date.now().toString().slice(-8)}`, trip_id: trip.trip_id, listing_id: listingId, sequence_no: slot?.seq ?? (trip.items.length ?? 0) + 1, planned_date: slot?.date ?? null, start_time: slot?.time ?? null, notes: null });
       if (error) throw error;
+      await notifyListingOwner(listingId); // anonymous demand signal to the business owner (best-effort)
       await refreshTrips();
     } catch (err: any) { setPlannerErr(err?.message ?? 'Could not add this place.'); }
     setAddingId(null);
