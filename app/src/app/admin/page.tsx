@@ -43,17 +43,33 @@ function GlassWellIcon({ gradient, children, size = 'md' }: { gradient: string; 
   );
 }
 
-function StatTile({ label, value, gradient, icon, badge }: { label: string; value: number | string; gradient: string; icon: React.ReactNode; badge?: string }) {
-  return (
-    <div className={`${CARD} rounded-2xl p-6`}>
+function StatTile({ label, value, gradient, icon, badge, onClick }: { label: string; value: number | string; gradient: string; icon: React.ReactNode; badge?: string; onClick?: () => void }) {
+  const body = (
+    <>
       <div className="flex items-start justify-between mb-4">
         <GlassWellIcon gradient={gradient}>{icon}</GlassWellIcon>
         {badge && <span className="px-2.5 py-1 rounded-lg bg-slate-100 text-slate-600 text-[11px] font-bold">{badge}</span>}
       </div>
       <p className="text-xs font-bold uppercase tracking-wider text-slate-400 mb-1">{label}</p>
-      <p className="text-4xl font-black text-slate-800 tracking-tight">{value}</p>
-    </div>
+      <div className="flex items-center justify-between gap-2">
+        <p className="text-4xl font-black text-slate-800 tracking-tight">{value}</p>
+        {onClick && (
+          <span className="flex items-center gap-1 text-[11px] font-bold text-violet-600 opacity-70 group-hover:opacity-100 transition-opacity shrink-0">
+            View
+            <svg className="w-3.5 h-3.5 group-hover:translate-x-0.5 transition-transform" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M9 18l6-6-6-6" /></svg>
+          </span>
+        )}
+      </div>
+    </>
   );
+  if (onClick) {
+    return (
+      <button type="button" onClick={onClick} className={`group text-left ${CARD} rounded-2xl p-6 cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-violet-400 hover:-translate-y-0.5`}>
+        {body}
+      </button>
+    );
+  }
+  return <div className={`${CARD} rounded-2xl p-6`}>{body}</div>;
 }
 
 function SearchField({ value, onChange, placeholder }: { value: string; onChange: (v: string) => void; placeholder: string }) {
@@ -163,6 +179,12 @@ export default function AdminPage() {
   const visibleListings = ov.listingsTotal - ov.listingsHidden;
   const adminName = su.profile?.full_name || su.profile?.email || 'Superuser';
 
+  // Deep-link support: /admin?tab=users etc. opens the matching section directly.
+  useEffect(() => {
+    const t = new URLSearchParams(window.location.search).get('tab') as Tab | null;
+    if (t && TABS.some((x) => x.id === t)) setTab(t);
+  }, []);
+
   const shownUsers = users.filter(u => !userSearch.trim() || `${u.name ?? ''} ${u.email ?? ''} ${u.user_id}`.toLowerCase().includes(userSearch.trim().toLowerCase()));
   const shownListings = listings.filter(l => (listingType === 'All' || l.listing_type === listingType) && (!listingSearch.trim() || `${l.name} ${l.listing_id}`.toLowerCase().includes(listingSearch.trim().toLowerCase())));
 
@@ -206,10 +228,10 @@ export default function AdminPage() {
         {tab === 'overview' && (
           <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
             <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-              <StatTile label="Total Users" value={ov.usersTotal} gradient="from-violet-500 to-indigo-500" icon={<svg className="w-6 h-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2" /><circle cx="9" cy="7" r="4" /></svg>} badge={ov.usersInactive > 0 ? `${ov.usersInactive} restricted` : 'All active'} />
-              <StatTile label="Active Listings" value={visibleListings} gradient="from-sky-500 to-blue-500" icon={<svg className="w-6 h-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z" /></svg>} badge={ov.listingsHidden > 0 ? `${ov.listingsHidden} hidden` : 'All live'} />
-              <StatTile label="Total Reviews" value={ov.reviewsTotal} gradient="from-emerald-500 to-teal-500" icon={<svg className="w-6 h-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z" /></svg>} badge={`${ov.photosTotal} photos`} />
-              <StatTile label="Pending Apps" value={ov.appsPending} gradient="from-amber-500 to-orange-500" icon={<svg className="w-6 h-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z" /><polyline points="14 2 14 8 20 8" /></svg>} badge={ov.appsPending > 0 ? 'Needs review' : 'Queue empty'} />
+              <StatTile onClick={() => setTab('users')} label="Total Users" value={ov.usersTotal} gradient="from-violet-500 to-indigo-500" icon={<svg className="w-6 h-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2" /><circle cx="9" cy="7" r="4" /></svg>} badge={ov.usersInactive > 0 ? `${ov.usersInactive} restricted` : 'All active'} />
+              <StatTile onClick={() => setTab('listings')} label="Active Listings" value={visibleListings} gradient="from-sky-500 to-blue-500" icon={<svg className="w-6 h-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z" /></svg>} badge={ov.listingsHidden > 0 ? `${ov.listingsHidden} hidden` : 'All live'} />
+              <StatTile onClick={() => setTab('reviews')} label="Total Reviews" value={ov.reviewsTotal} gradient="from-emerald-500 to-teal-500" icon={<svg className="w-6 h-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z" /></svg>} badge={`${ov.photosTotal} photos`} />
+              <StatTile onClick={() => setTab('applications')} label="Pending Apps" value={ov.appsPending} gradient="from-amber-500 to-orange-500" icon={<svg className="w-6 h-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z" /><polyline points="14 2 14 8 20 8" /></svg>} badge={ov.appsPending > 0 ? 'Needs review' : 'Queue empty'} />
             </div>
 
             <div className={`${CARD} rounded-3xl p-8`}>
