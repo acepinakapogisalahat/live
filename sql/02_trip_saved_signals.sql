@@ -115,3 +115,72 @@ BEGIN
     EXECUTE format('ALTER TABLE public.notifications ALTER COLUMN %I SET DEFAULT gen_random_uuid()', c.column_name);
   END IF;
 END $$;
+
+-- 4) OWNER TRIP-ACTIVITY RPC — powers the Business Hub "Trip interest" tab.
+--    Shows the owner exactly which of THEIR listings travelers added to trips,
+--    with the trip name, planned date and visit window ("how long"). Traveler
+--    identities stay private by design. Only real timestamps are used — no
+--    fake dates.
+CREATE OR REPLACE FUNCTION get_owner_demand(p_owner_user_id VARCHAR(20))
+RETURNS JSONB
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+DECLARE
+  result JSONB;
+BEGIN
+  IF p_owner_user_id IS NULL THEN
+    RETURN '{}'::jsonb;
+  END IF;
+
+  WITH mine AS (
+    SELECT l.listing_id, l.name
+    FROM listings l
+    WHERE l.uploaded_by = p_owner_user_id
+  ),
+  items AS (
+    SELECT
+      ti.listing_id,
+      ti.trip_item_id,
+      COALESCE(NULLIF(TRIM(t.trip_name), ''), 'Unnamed trip') AS trip_name,
+      ti.planned_date,
+      ti.start_time,
+      ti.end_time
+    FROM trip_items ti
+    LEFT JOIN trips t ON t.trip_id = ti.trip_id
+    WHERE ti.listing_id IN (SELECT listing_id FROM mine)
+  ),
+  recent AS (
+    SELECT * FROM items
+    ORDER BY planned_date DESC NULLS LAST, trip_item_id DESC
+    LIMIT 50
+  )
+  SELECT jsonb_build_object(
+    'total_adds',    (SELECT COUNT(*) FROM items),
+    'unique_trips',  (SELECT COUNT(DISTINCT trip_name) FROM items),
+    'adds_7d',       (SELECT COUNT(*) FROM recent WHERE planned_date >= CURRENT_DATE - 7),
+    'per_listing',   (
+      SELECT COALESCE(jsonb_agg(x ORDER BY x.adds DESC), '[]'::jsonb)
+      FROM (
+        SELECT m.listing_id, m.name,
+               COUNT(i.listing_id) AS adds
+        FROM mine m
+        JOIN items i ON i.listing_id = m.listing_id
+        GROUP BY m.listing_id, m.name
+      ) x
+    ),
+    'recent', (
+      SELECT COALESCE(jsonb_agg(y ORDER BY y.planned_date DESC NULLS LAST, y.trip_item_id DESC), '[]'::jsonb)
+      FROM (
+        SELECT listing_id, trip_name, planned_date, start_time, end_time
+        FROM recent
+      ) y
+    )
+  ) INTO result;
+
+  RETURN COALESCE(result, '{}'::jsonb);
+END;
+$$;
+
+GRANT EXECUTE ON FUNCTION get_owner_demand(VARCHAR) TO authenticated;

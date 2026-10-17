@@ -11,6 +11,7 @@ export type TripSavedSignal = {
   trip_name: string;
   planned_date: string | null;
   start_time: string | null;
+  end_time: string | null;
   created_at: string; // derived from trip_item_id timestamp (see SQL)
 };
 
@@ -76,7 +77,7 @@ export async function listTripSignalsForOwner(ownerUserId: string, limit = 20): 
   if (!ids.length) return [];
   const { data, error } = await sup
     .from('trip_items')
-    .select('trip_item_id, listing_id, planned_date, start_time, trips(trip_name)')
+    .select('trip_item_id, listing_id, planned_date, start_time, end_time, trips(trip_name)')
     .in('listing_id', ids)
     .order('trip_item_id', { ascending: false })
     .limit(limit);
@@ -90,8 +91,45 @@ export async function listTripSignalsForOwner(ownerUserId: string, limit = 20): 
         trip_name: r.trips?.trip_name ?? 'a trip',
         planned_date: r.planned_date ?? null,
         start_time: r.start_time ?? null,
+        end_time: r.end_time ?? null,
         created_at: isNaN(ms) ? '' : new Date(ms).toISOString(),
       } as TripSavedSignal;
     })
     .filter((s) => !!s.created_at);
+}
+
+// ── Owner trip-activity analytics via SECURITY DEFINER RPC (bypasses trip RLS) ──
+export type DemandListingRow = {
+  listing_id: string;
+  name: string;
+  adds: number; // how many times travelers added this listing to their trips
+};
+
+export type DemandTripRow = {
+  listing_id: string;
+  trip_name: string;
+  planned_date: string | null;
+  start_time: string | null;
+  end_time: string | null;
+};
+
+export type OwnerDemandSummary = {
+  total_adds: number;
+  unique_trips: number;
+  adds_7d: number;
+  per_listing: DemandListingRow[];
+  recent: DemandTripRow[];
+};
+
+// Best-effort: returns null when the RPC hasn't been deployed yet so callers
+// can fall back to the older client-side queries without breaking.
+export async function getOwnerDemand(ownerUserId: string): Promise<OwnerDemandSummary | null> {
+  try {
+    const sup = db();
+    const { data, error } = await sup.rpc('get_owner_demand', { p_owner_user_id: ownerUserId });
+    if (error || !data) return null;
+    return data as unknown as OwnerDemandSummary;
+  } catch {
+    return null;
+  }
 }
