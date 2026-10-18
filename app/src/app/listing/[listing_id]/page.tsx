@@ -6,6 +6,7 @@ import Link from 'next/link';
 import { useParams, useRouter } from 'next/navigation';
 import { createClient } from '@/utils/supabase/client';
 import { useRole } from '@/utils/supabase/role';
+import { notifyListingOwner } from '@/utils/supabase/tripSignals';
 
 type Review = {
   review_id: string;
@@ -588,6 +589,7 @@ function AddToTripModal({ listingId, userId, listingName, onClose, onSuccess }: 
       const seq = target ? target.count + 1 : 1;
       const { error } = await supabase.from('trip_items').insert({ trip_item_id: `ITI-${Date.now().toString().slice(-8)}`, trip_id: tripId, listing_id: listingId, sequence_no: seq, planned_date: null, start_time: null, notes: null });
       if (error) throw error;
+      await notifyListingOwner(listingId); // anonymous demand signal to the business owner (best-effort)
       setDoneTripId(tripId);
       setDone(target?.trip_name ?? (newName.trim() || 'your trip'));
     } catch (e: any) { setErr(e?.message ?? 'Could not add to trip.'); }

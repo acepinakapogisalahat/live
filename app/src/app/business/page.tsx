@@ -3,8 +3,10 @@
 
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import { createClient } from '@/utils/supabase/client';
 import { useRole } from '@/utils/supabase/role';
+import { getOwnerDemand, type OwnerDemandSummary } from '@/utils/supabase/tripSignals';
 
 type OwnListing = {
   listing_id: string;
@@ -54,6 +56,16 @@ const BTN_ROSE = `relative overflow-hidden bg-gradient-to-r from-rose-500 to-red
 const BTN_EMERALD = `relative overflow-hidden bg-gradient-to-r from-emerald-500 to-teal-500 text-white shadow-[0_12px_28px_-8px_rgba(16,185,129,0.6),inset_0_1px_0_rgba(255,255,255,0.5)] hover:brightness-110 active:scale-[0.97] transition-all duration-200 ${SHEEN}`;
 const CHIP_IDLE = `${GLASS_SM} text-slate-600 hover:text-violet-700 hover:bg-white/70 active:scale-[0.97] transition-all duration-200`;
 const GRAD_TEXT = 'bg-gradient-to-r from-indigo-600 via-violet-600 to-fuchsia-600 bg-clip-text text-transparent';
+
+// Clickable summary tile used on the Business Hub dashboards.
+function HubStat({ onClick, children }: { onClick: () => void; children: React.ReactNode }) {
+  return (
+    <button type="button" onClick={onClick} className={`group text-left ${NEU} ${NEU_HOVER} rounded-3xl p-6 cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-violet-400`}>
+      {children}
+    </button>
+  );
+}
+
 const GLOSS = 'shadow-[inset_0_1px_2px_rgba(255,255,255,0.7),inset_0_-1px_2px_rgba(70,80,150,0.2)]';
 
 function Star({ className, filled }: { className?: string; filled?: boolean }) {
@@ -259,7 +271,10 @@ export default function BusinessPage() {
   const [application, setApplication] = useState<any>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
 
-  const [activeTab, setActiveTab] = useState<'overview' | 'reviews' | 'bookings'>('overview');
+  const [activeTab, setActiveTab] = useState<'overview' | 'interest' | 'reviews' | 'bookings'>('overview');
+  const router = useRouter();
+  // Trip-interest analytics: listings travelers added to their trips
+  const [demand, setDemand] = useState<OwnerDemandSummary | null>(null);
   const [selectedListingId, setSelectedListingId] = useState<string | null>(null);
   const [reviewStarFilter, setReviewStarFilter] = useState<number | null>(null);
   const [reviewSort, setReviewSort] = useState<'newest' | 'oldest' | 'highest' | 'lowest'>('newest');
@@ -316,6 +331,10 @@ export default function BusinessPage() {
 
     const { data: appRows } = await supabase.from('business_applications').select('*').eq('user_id', uid).limit(1);
     setApplication((appRows ?? [])[0] ?? null);
+
+    // Demand analytics (best-effort — never blocks the hub)
+    try { setDemand(await getOwnerDemand(uid)); } catch {}
+
     setLoading(false);
   }
 
@@ -452,6 +471,18 @@ export default function BusinessPage() {
     : 0;
   const responseRate = allBookings.length ? Math.round(((allBookings.length - pending.length) / allBookings.length) * 100) : 100;
 
+  // ── Trip-interest (added-to-trip) derived values ──
+  const demandTotal = demand?.total_adds ?? 0;
+  const demand7d = demand?.adds_7d ?? 0;
+  const maxAdds = demand?.per_listing?.length ? Math.max(1, ...demand.per_listing.map((p) => Number(p.adds))) : 1;
+
+  function visitWindow(planned: string | null, st: string | null, en: string | null): string {
+    const date = planned ? fmtDate(planned) : 'date not set yet';
+    if (st && en) return `${date} · ${st.slice(0, 5)}–${en.slice(0, 5)}`;
+    if (st) return `${date} · from ${st.slice(0, 5)}`;
+    return date;
+  }
+
   function openCriticalReviews() {
     const byCrit = [...listings].sort(
       (a, b) =>
@@ -490,7 +521,7 @@ export default function BusinessPage() {
         </div>
 
         <div className={`flex items-center gap-1.5 p-1.5 rounded-2xl ${INSET} mb-8 w-fit`}>
-          {(['overview', 'reviews', 'bookings'] as const).map((tab) => {
+          {(['overview', 'interest', 'reviews', 'bookings'] as const).map((tab) => {
             const badge = tab === 'reviews' ? criticalReviews : tab === 'bookings' ? pendingBookingsCount : 0;
             return (
               <button
@@ -504,7 +535,12 @@ export default function BusinessPage() {
                 }`}
               >
                 <span className="relative flex items-center gap-2">
-                  {tab}
+                  {tab === 'interest' ? 'Trip interest' : tab}
+                  {tab === 'interest' && demandTotal > 0 && (
+                    <span className={`min-w-[1.35rem] h-5 px-1.5 rounded-full text-[10px] font-black flex items-center justify-center ${activeTab === tab ? 'bg-white/25 text-white' : 'bg-violet-100 text-violet-600'}`}>
+                      {demandTotal}
+                    </span>
+                  )}
                   {badge > 0 && (
                     <span className={`min-w-[1.35rem] h-5 px-1.5 rounded-full text-[10px] font-black flex items-center justify-center ${activeTab === tab ? 'bg-white/25 text-white' : 'bg-rose-100 text-rose-600'}`}>
                       {badge}
@@ -548,34 +584,34 @@ export default function BusinessPage() {
         {activeTab === 'overview' && (
           <div className="space-y-10">
             <div className="grid grid-cols-2 md:grid-cols-4 gap-5">
-              <div className={`${NEU} ${NEU_HOVER} rounded-3xl p-6`}>
+              <HubStat onClick={() => router.push('/owner')}>
                 <div className="flex items-start justify-between mb-4">
                   <GlassWellIcon gradient="from-indigo-500 to-violet-500"><Store className="w-6 h-6" /></GlassWellIcon>
                 </div>
                 <p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-400 mb-1">Active listings</p>
                 <p className="text-4xl font-black text-slate-800">{listings.length}</p>
-              </div>
-              <div className={`${NEU} ${NEU_HOVER} rounded-3xl p-6`}>
+              </HubStat>
+              <HubStat onClick={() => setActiveTab('reviews')}>
                 <div className="flex items-start justify-between mb-4">
                   <GlassWellIcon gradient="from-amber-400 to-orange-500"><Star className="w-6 h-6" filled /></GlassWellIcon>
                 </div>
                 <p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-400 mb-1">Average rating</p>
                 <p className="text-4xl font-black text-slate-800">{avgAll != null ? avgAll.toFixed(1) : '—'}</p>
-              </div>
-              <div className={`${NEU} ${NEU_HOVER} rounded-3xl p-6`}>
+              </HubStat>
+              <HubStat onClick={() => setActiveTab('reviews')}>
                 <div className="flex items-start justify-between mb-4">
                   <GlassWellIcon gradient="from-emerald-400 to-teal-500"><MessageSquare className="w-6 h-6" /></GlassWellIcon>
                 </div>
                 <p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-400 mb-1">Total reviews</p>
                 <p className="text-4xl font-black text-slate-800">{allReviews.length}</p>
-              </div>
-              <div className={`${NEU} ${NEU_HOVER} rounded-3xl p-6`}>
+              </HubStat>
+              <HubStat onClick={() => setActiveTab('bookings')}>
                 <div className="flex items-start justify-between mb-4">
                   <GlassWellIcon gradient="from-sky-400 to-indigo-500"><Clock className="w-6 h-6" /></GlassWellIcon>
                 </div>
                 <p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-400 mb-1">Response rate</p>
                 <p className="text-4xl font-black text-slate-800">{responseRate}%</p>
-              </div>
+              </HubStat>
             </div>
 
             {Object.keys(topListingPerCategory).length > 0 && (
@@ -765,6 +801,147 @@ export default function BusinessPage() {
                 )}
               </div>
             </div>
+          </div>
+        )}
+
+        {activeTab === 'interest' && (
+          <div>
+            <div className="mb-7">
+              <h2 className="text-2xl font-black text-slate-800">Trip interest</h2>
+              <AccentBar />
+              <p className="text-sm text-slate-500 mt-3">
+                See what is actually happening: every time a traveler adds one of your places to their itinerary it shows up here —
+                including which trip, when they plan to visit and for how long. Traveler identities stay private by design.
+              </p>
+            </div>
+
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-5 mb-8">
+              <HubStat onClick={() => setActiveTab('interest')}>
+                <div className="flex items-start justify-between mb-4">
+                  <GlassWellIcon gradient="from-violet-500 to-fuchsia-500">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" className="w-6 h-6">
+                      <path d="M6 3h12a1 1 0 0 1 1 1v17l-7-4.5L5 21V4a1 1 0 0 1 1-1z" strokeLinecap="round" strokeLinejoin="round" />
+                    </svg>
+                  </GlassWellIcon>
+                </div>
+                <p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-400 mb-1">Added to trips</p>
+                <p className="text-4xl font-black text-slate-800">{demandTotal}</p>
+              </HubStat>
+              <HubStat onClick={() => setActiveTab('interest')}>
+                <div className="flex items-start justify-between mb-4">
+                  <GlassWellIcon gradient="from-indigo-500 to-sky-500"><Calendar className="w-6 h-6" /></GlassWellIcon>
+                </div>
+                <p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-400 mb-1">Trips planning</p>
+                <p className="text-4xl font-black text-slate-800">{demand?.unique_trips ?? 0}</p>
+              </HubStat>
+              <HubStat onClick={() => setActiveTab('interest')}>
+                <div className="flex items-start justify-between mb-4">
+                  <GlassWellIcon gradient="from-emerald-400 to-teal-500"><TrendUp className="w-6 h-6" /></GlassWellIcon>
+                  {demand7d > 0 && (
+                    <span className="px-2.5 py-1 rounded-full bg-emerald-50/80 backdrop-blur-md border border-emerald-200/80 text-emerald-600 text-[10px] font-black">NEW</span>
+                  )}
+                </div>
+                <p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-400 mb-1">Visits planned this week</p>
+                <p className="text-4xl font-black text-slate-800">{demand7d}</p>
+              </HubStat>
+              <HubStat onClick={() => { setActiveTab('bookings'); setBookingStatusFilter('confirmed'); }}>
+                <div className="flex items-start justify-between mb-4">
+                  <GlassWellIcon gradient="from-amber-400 to-orange-500"><Star className="w-6 h-6" filled /></GlassWellIcon>
+                </div>
+                <p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-400 mb-1">Booked stays</p>
+                <p className="text-4xl font-black text-slate-800">{confirmed.length}</p>
+              </HubStat>
+            </div>
+
+            {/* Adds per listing */}
+            <section className="mb-8">
+              <h3 className="text-lg font-black text-slate-800 mb-4 flex items-center gap-2">
+                <TrendUp className="w-5 h-5 text-violet-500" />
+                Added to trips by listing
+              </h3>
+              {!demand || demand.per_listing.length === 0 ? (
+                <div className={`${NEU} rounded-3xl p-12 text-center`}>
+                  <div className={`w-16 h-16 mx-auto rounded-3xl ${INSET} text-violet-300 flex items-center justify-center mb-4`}>
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" className="w-8 h-8">
+                      <path d="M6 3h12a1 1 0 0 1 1 1v17l-7-4.5L5 21V4a1 1 0 0 1 1-1z" strokeLinecap="round" strokeLinejoin="round" />
+                    </svg>
+                  </div>
+                  <p className="font-black text-slate-700 mb-1">No trips include your places yet</p>
+                  <p className="text-sm text-slate-500 max-w-md mx-auto">When travelers add your places to their itineraries, the activity will appear here in real time.</p>
+                </div>
+              ) : (
+                <div className={`${GLASS} rounded-3xl p-6 space-y-4`}>
+                  {demand.per_listing.map((p) => {
+                    const pct = Math.round((Number(p.adds) / maxAdds) * 100);
+                    return (
+                      <div key={p.listing_id}>
+                        <div className="flex items-center justify-between mb-1.5">
+                          <div className="flex items-center gap-2 min-w-0">
+                            <p className="font-bold text-slate-700 text-sm truncate">{p.name}</p>
+                            <span className="text-[10px] font-mono text-slate-300 shrink-0">{p.listing_id}</span>
+                          </div>
+                          <p className="text-xs font-black text-violet-600 shrink-0 ml-3">
+                            {p.adds} trip{Number(p.adds) === 1 ? '' : 's'}
+                          </p>
+                        </div>
+                        <div className={`h-2.5 rounded-full ${INSET} overflow-hidden`}>
+                          <div
+                            className="h-full rounded-full bg-gradient-to-r from-indigo-500 via-violet-500 to-fuchsia-500 shadow-[0_0_10px_rgba(139,92,246,0.5)] transition-all duration-500"
+                            style={{ width: `${Math.max(pct, Number(p.adds) > 0 ? 6 : 0)}%` }}
+                          />
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </section>
+
+            {/* Recent trip activity — who's planning, when, how long */}
+            {!!demand && demand.recent.length > 0 && (
+              <section>
+                <h3 className="text-lg font-black text-slate-800 mb-1.5 flex items-center gap-2">
+                  <Clock className="w-5 h-5 text-sky-500" />
+                  Recent trip activity
+                </h3>
+                <p className="text-xs text-slate-400 mb-4">Traveler identities stay private — you see the trip, when they plan to visit and for how long.</p>
+                <div className="space-y-3">
+                  {demand.recent.map((r, idx) => {
+                    const lname = listings.find((l) => l.listing_id === r.listing_id)?.name ?? r.listing_id;
+                    return (
+                      <div key={`${r.trip_name}-${r.listing_id}-${idx}`} className={`${NEU_SM} ${NEU_HOVER} rounded-3xl p-5 flex items-center gap-4`}>
+                        <GlassWellIcon gradient="from-indigo-500 via-violet-500 to-fuchsia-500">
+                          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" className="w-5 h-5">
+                            <path d="M6 3h12a1 1 0 0 1 1 1v17l-7-4.5L5 21V4a1 1 0 0 1 1-1z" strokeLinecap="round" strokeLinejoin="round" />
+                          </svg>
+                        </GlassWellIcon>
+                        <div className="flex-1 min-w-0">
+                          <p className="font-bold text-slate-700 text-sm truncate">
+                            <span className="text-violet-600">{lname}</span> added to trip <span className="font-black">“{r.trip_name}”</span>
+                          </p>
+                          <p className="text-xs text-slate-500 mt-1 flex flex-wrap items-center gap-x-2 gap-y-1">
+                            <span className="inline-flex items-center gap-1">
+                              <Calendar className="w-3.5 h-3.5 text-slate-400" />
+                              {visitWindow(r.planned_date, r.start_time, r.end_time)}
+                            </span>
+                            {r.start_time && r.end_time && (() => {
+                              const mins = Math.max(0, Math.round((new Date(`2000-01-01T${r.end_time}`).getTime() - new Date(`2000-01-01T${r.start_time}`).getTime()) / 60000));
+                              return mins >= 60 ? (
+                                <span className="px-2 py-0.5 rounded-full bg-sky-50/80 border border-sky-200/70 text-sky-600 text-[10px] font-black">
+                                  ~{(mins / 60).toFixed(mins % 60 === 0 ? 0 : 1)}h planned visit
+                                </span>
+                              ) : mins > 0 ? (
+                                <span className="px-2 py-0.5 rounded-full bg-sky-50/80 border border-sky-200/70 text-sky-600 text-[10px] font-black">~{mins}m planned visit</span>
+                              ) : null;
+                            })()}
+                          </p>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </section>
+            )}
           </div>
         )}
 

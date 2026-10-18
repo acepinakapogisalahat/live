@@ -5,6 +5,7 @@ import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { createClient } from '@/utils/supabase/client';
 import { useRole } from '@/utils/supabase/role';
+import { getMyListingSaves, listTripSignalsForOwner, type TripSavedSignal } from '@/utils/supabase/tripSignals';
 
 type ListingRow = {
   listing_id: string;
@@ -109,6 +110,24 @@ function Store({ className }: { className?: string }) {
   );
 }
 
+function BookmarkIcon({ className }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" className={className ?? 'w-5 h-5'}>
+      <path d="M6 3h12a1 1 0 0 1 1 1v17l-7-4.5L5 21V4a1 1 0 0 1 1-1z" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
+// relative time helper for the demand-signal feed ("2h ago")
+function timeAgo(d: Date): string {
+  const s = Math.max(0, (Date.now() - d.getTime()) / 1000);
+  if (s < 60) return 'just now';
+  if (s < 3600) return `${Math.floor(s / 60)}m ago`;
+  if (s < 86400) return `${Math.floor(s / 3600)}h ago`;
+  if (s < 604800) return `${Math.floor(s / 86400)}d ago`;
+  return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+}
+
 function Star({ className, filled }: { className?: string; filled?: boolean }) {
   return (
     <svg viewBox="0 0 20 20" fill={filled ? 'currentColor' : 'none'} stroke="currentColor" strokeWidth="1.5" className={className ?? 'w-4 h-4'}>
@@ -176,6 +195,9 @@ export default function OwnerPage() {
   const [err, setErr] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [stats, setStats] = useState({ totalListings: 0, avgRating: 0, totalReviews: 0, pendingBookings: 0 });
+  // Demand signals: anonymous "travelers saved your place to their trips" analytics
+  const [saves, setSaves] = useState<{ totalSaves: number; perListing: { listing_id: string; name: string; saves: number; lastSaved: string | null }[] }>({ totalSaves: 0, perListing: [] });
+  const [signals, setSignals] = useState<TripSavedSignal[]>([]);
 
   useEffect(() => {
     if (!role.loading && role.isOwner) load();
@@ -216,6 +238,14 @@ export default function OwnerPage() {
       pendingBookings = bkCount ?? 0;
     }
     setStats({ totalListings: mineRows.length, avgRating, totalReviews, pendingBookings });
+
+    // Demand signals (best-effort — never blocks the dashboard)
+    if (role.userId) {
+      try {
+        const [sv, sg] = await Promise.all([getMyListingSaves(role.userId), listTripSignalsForOwner(role.userId)]);
+        setSaves(sv); setSignals(sg);
+      } catch {}
+    }
   }
 
   async function reloadDestinations() {
@@ -476,7 +506,7 @@ export default function OwnerPage() {
         )}
 
         {/* Stats strip */}
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-5 mb-10">
+        <div className="grid grid-cols-2 md:grid-cols-5 gap-5 mb-10">
           <div className="animate-fade-in-up" style={{ animationDelay: '60ms' }}>
             <StatTile
               label="Total listings"
@@ -503,6 +533,15 @@ export default function OwnerPage() {
               icon={<MessageIcon className="w-6 h-6" />}
             />
           </div>
+          <div className="animate-fade-in-up" style={{ animationDelay: '210ms' }}>
+            <StatTile
+              label="Trip saves"
+              value={String(saves.totalSaves)}
+              gradient="from-fuchsia-500 to-pink-500"
+              icon={<BookmarkIcon className="w-6 h-6" />}
+              badge={saves.totalSaves > 0 ? <span className="px-2.5 py-1 rounded-full bg-violet-50/80 backdrop-blur-md border border-violet-200/80 text-violet-600 text-[10px] font-black">DEMAND</span> : undefined}
+            />
+          </div>
           <div className="animate-fade-in-up" style={{ animationDelay: '240ms' }}>
             <StatTile
               label="Pending bookings"
@@ -513,6 +552,38 @@ export default function OwnerPage() {
             />
           </div>
         </div>
+
+        {/* Demand signals — anonymous "saved to a trip" activity (traveler identity is never exposed) */}
+        {signals.length > 0 && (
+          <section className={`${GLASS} rounded-3xl p-6 mb-10 animate-fade-in-up`} style={{ animationDelay: '160ms' }}>
+            <div className="flex items-center justify-between mb-1">
+              <h2 className="text-xl font-black text-slate-800">Travelers planning trips with your places</h2>
+              <Link href="/notifications" className="text-xs font-bold text-violet-600 hover:text-violet-800 transition">View alerts →</Link>
+            </div>
+            <p className="text-sm text-slate-500 mb-4">Anonymous demand signals — we never reveal who saved what, only that travelers are adding your listings to their itineraries.</p>
+            <ul className="space-y-2 max-h-64 overflow-y-auto pr-1 scrollbar-hide">
+              {signals.map((s) => {
+                const listingName = saves.perListing.find((p) => p.listing_id === s.listing_id)?.name ?? s.listing_id;
+                const when = s.created_at ? new Date(s.created_at) : null;
+                return (
+                  <li key={s.trip_item_id} className="flex items-center gap-3 px-4 py-3 rounded-2xl bg-white/60 backdrop-blur-md border border-white/70 shadow-[0_4px_14px_rgba(110,120,190,0.12)]">
+                    <GlassWellIcon gradient="from-fuchsia-400 to-pink-500"><BookmarkIcon className="w-4 h-4" /></GlassWellIcon>
+                    <div className="min-w-0 flex-1">
+                      <p className="text-sm font-bold text-slate-700 truncate">
+                        <Link href={`/listing/${s.listing_id}`} className="hover:text-violet-600 transition">{listingName}</Link>
+                        <span className="font-semibold text-slate-400"> was added to a traveler&apos;s trip</span>
+                      </p>
+                      <p className="text-xs text-slate-400 font-medium truncate">
+                        Itinerary stop{s.planned_date ? ` · planned ${new Date(s.planned_date + 'T00:00:00').toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}` : ''}{s.start_time ? ` at ${s.start_time.slice(0, 5)}` : ''}
+                      </p>
+                    </div>
+                    {when && <span className="shrink-0 text-[11px] font-black uppercase tracking-wide text-slate-400">{timeAgo(when)}</span>}
+                  </li>
+                );
+              })}
+            </ul>
+          </section>
+        )}
 
         {/* Main grid: glass form (left, sticky) + listings (right) */}
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 items-start">

@@ -123,7 +123,7 @@ export async function hardDeleteListing(id: string) {
 
   // Each child delete is checked, so a future missing dependent fails with an actionable
   // message naming the table instead of the cryptic generic FK banner.
-  const step = async (table: string, q: Promise<any>) => {
+  const step = async (table: string, q: any) => {
     const { error } = await q;
     if (error) throw new Error(`Could not clear ${table} for listing ${id}: ${error.message}`);
   };

@@ -151,7 +151,7 @@ export default function ProfilePage() {
     const d = Math.round((new Date(t.end_date + 'T00:00:00').getTime() - new Date(t.start_date + 'T00:00:00').getTime()) / 86400000) + 1;
     return sum + Math.max(0, d);
   }, 0);
-  const initials = ((name || profile?.name || '?').trim().split(/\s+/).map((w) => w[0]).slice(0, 2).join('').toUpperCase()) || 'T';
+  const initials = ((name || profile?.name || '?').trim().split(/\s+/).map((w: string) => w[0]).slice(0, 2).join('').toUpperCase()) || 'T';
   const joinedAgo = profile?.created_at ? Math.max(1, Math.floor((Date.now() - new Date(profile.created_at).getTime()) / 86400000)) : null;
 
   if (role.loading) {

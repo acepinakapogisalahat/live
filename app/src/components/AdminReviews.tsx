@@ -44,7 +44,7 @@ function Stars({ n, size = 'w-3.5 h-3.5' }: { n: number; size?: string }) {
   return (<div className="flex gap-0.5 shrink-0">{[1, 2, 3, 4, 5].map((i) => <Star key={i} className={`${size} ${i <= n ? 'text-amber-400' : 'text-slate-200'}`} filled={i <= n} />)}</div>);
 }
 
-type Row = AdminReview & { user_id: string | null; visit_date: string | null; owner_user_id: string | null; listing_type: string | null; listing_image: string | null; listing_average: number | null; signal: ReviewSignal };
+type Row = AdminReview & { user_id: string | null; visit_date: string | null; owner_user_id: string | null; listing_type: string | null; listing_image: string | null; listing_average: number | null; helpful_votes_count?: number | null; photo_url?: string | null; signal: ReviewSignal };
 type Group = { listing_id: string; name: string; type: string | null; image: string | null; average: number | null; total: number; danger: number; warn: number; flagged: number };
 type Notify = (t: { k: 'ok' | 'err'; m: string }) => void;
 

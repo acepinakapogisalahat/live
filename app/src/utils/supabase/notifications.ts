@@ -16,6 +16,7 @@ export const NOTIF_META: Record<string, NotifMeta> = {
   review_flagged:      { grad: 'from-amber-400 to-orange-500',  label: 'Review flagged',     tone: 'amber' },
   review_unflag:       { grad: 'from-emerald-400 to-teal-500',  label: 'Review cleared',     tone: 'emerald' },
   review_removed:      { grad: 'from-rose-500 to-red-500',      label: 'Review removed',     tone: 'rose' },
+  listing_saved:       { grad: 'from-fuchsia-400 to-pink-500',  label: 'Saved to a trip',    tone: 'violet' },
   listing_hidden:      { grad: 'from-sky-400 to-indigo-500',    label: 'Listing hidden',     tone: 'sky' },
   listing_removed:     { grad: 'from-rose-500 to-red-500',      label: 'Listing removed',    tone: 'rose' },
   account_suspended:   { grad: 'from-amber-400 to-orange-500',  label: 'Account suspended',  tone: 'amber' },
@@ -28,6 +29,7 @@ export const NOTIF_DEFAULT: NotifMeta = { grad: 'from-slate-400 to-slate-500', l
 export function metaFor(type: string): NotifMeta { return NOTIF_META[type] ?? NOTIF_DEFAULT; }
 
 export function notifHref(n: Notif): string {
+  if (n.type === 'listing_saved') return n.related_id ? `/listing/${n.related_id}` : '/owner';
   if (n.type.startsWith('review_') || n.type.startsWith('listing_')) return n.related_id ? `/listing/${n.related_id}` : '/profile';
   if (n.type.startsWith('application_')) return '/business';
   if (n.type.startsWith('account_')) return '/profile';

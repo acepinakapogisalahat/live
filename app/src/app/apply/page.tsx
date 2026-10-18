@@ -320,7 +320,7 @@ export default function ApplyPage() {
               {path === 'place' ? (
               <Section n="2" title="The place" sub="What travelers will see in Discover once you’re approved.">
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  <Field id="placeName" label={path === 'business' ? 'Flagship place name (optional)' : 'Place name'} error={path === 'place' ? errors.companyName : undefined}>
+                  <Field id="placeName" label={path === ('business' as Path) ? 'Flagship place name (optional)' : 'Place name'} error={path === 'place' ? errors.companyName : undefined}>
                     <input id="placeName" value={placeName} onChange={(e) => setPlaceName(e.target.value)} maxLength={120} placeholder="e.g., Sunset Ridge Viewpoint" className={INPUT} aria-invalid={path === 'place' && !!errors.companyName} />
                   </Field>
                 </div>

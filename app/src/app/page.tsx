@@ -98,7 +98,7 @@ export default function HomePage() {
     const ids = rows.map((r) => r.trip_id);
     const { data: items } = await supabase.from('trip_items').select('*').in('trip_id', ids);
     const listingIds = [...new Set((items ?? []).map((i: any) => i.listing_id).filter((id: any) => id && id !== 'NOTE'))];
-    const lMap: Record<string, { name: string; destination_id: string | null; destination_name: string | null; region_country: string | null; listing_type: string | null; average_rating: number | null }> = {};
+    const lMap: Record<string, { name: string; destination_id: string | null; destination_name: string | null; region_country: string | null; listing_type: string | null; average_rating: number | null; destBlob?: any }> = {};
     if (listingIds.length) {
       const { data: ls } = await supabase.from('listings').select('listing_id, name, listing_type, average_rating, destination:destination_id(*)').in('listing_id', listingIds);
       (ls ?? []).forEach((l: any) => { lMap[l.listing_id] = { name: l.name, destination_id: l.destination?.destination_id ?? null, destination_name: l.destination?.destination_name ?? null, region_country: l.destination?.region_country ?? null, destBlob: l.destination ?? null, listing_type: l.listing_type ?? null, average_rating: l.average_rating != null ? Number(l.average_rating) : null }; });
