@@ -7,12 +7,13 @@ import { createClient } from '@/utils/supabase/client';
 const FLAG = 'tm-profile-bootstrap';
 
 export default function AuthBootstrap() {
-  const supabase = createClient();
+  const supabase = typeof window !== 'undefined' ? createClient() : null;
 
   useEffect(() => {
     let cancelled = false;
 
     async function run(attempt = 0) {
+       if (!supabase) return;
       if (cancelled) return;
       const { data } = await supabase.auth.getSession();
       const session = data.session;
